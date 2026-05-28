@@ -1,5 +1,7 @@
+const API_BASE = import.meta.env.VITE_API_URL || '';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+axios.defaults.baseURL = API_BASE;
 
 const StoreContext = createContext(null);
 
