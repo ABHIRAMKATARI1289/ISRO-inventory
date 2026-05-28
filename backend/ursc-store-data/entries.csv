@@ -1,0 +1,11 @@
+id,itemId,categoryId,indentingOfficer,date,qtyReceived,openingQty,closingQty
+ent001,itm001,cat001,Dr. Suresh Iyer,2026-04-10,10,2,12
+ent002,itm002,cat001,Eng. Priya Nair,2026-04-15,5,2,7
+ent003,itm004,cat002,Lt. Ramesh Kumar,2026-04-18,200,140,340
+ent004,itm007,cat003,Dr. Kavitha Rao,2026-04-22,30,0,30
+ent005,itm008,cat003,Eng. Arun Menon,2026-05-02,10,0,10
+ent006,itm009,cat003,Dr. Suresh Iyer,2026-05-12,20,0,20
+ent007,itm012,cat006,Eng. Priya Nair,2026-05-15,6,0,6
+ent008,itm005,cat002,Lt. Ramesh Kumar,2026-05-18,3,0,3
+ent009,itm013,cat006,Eng. Arun Menon,2026-05-20,15,0,15
+ent010,itm003,cat001,Dr. Kavitha Rao,2026-05-25,5,0,5

@@ -1,0 +1,9 @@
+id,itemId,categoryId,requestedBy,approvedBy,date,qtyIssued,openingQty,closingQty
+iss001,itm007,cat003,Eng. Vijay Sharma,Dr. Suresh Iyer,2026-04-25,5,30,25
+iss002,itm008,cat003,Eng. Priya Nair,Lt. Ramesh Kumar,2026-05-05,4,10,6
+iss003,itm001,cat001,Eng. Arun Menon,Dr. Kavitha Rao,2026-05-10,0,12,12
+iss004,itm012,cat006,Lt. Ramesh Kumar,Dr. Suresh Iyer,2026-05-20,2,6,4
+iss005,itm007,cat003,Dr. Kavitha Rao,Lt. Ramesh Kumar,2026-05-22,3,25,22
+iss006,itm009,cat003,Eng. Vijay Sharma,Dr. Suresh Iyer,2026-05-23,5,20,15
+iss007,itm008,cat003,Eng. Priya Nair,Dr. Kavitha Rao,2026-05-25,4,6,2
+iss008,itm013,cat006,Eng. Arun Menon,Lt. Ramesh Kumar,2026-05-26,4,15,11

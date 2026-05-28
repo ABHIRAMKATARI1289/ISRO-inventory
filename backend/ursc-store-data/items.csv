@@ -1,0 +1,14 @@
+id,categoryId,name,currentStock,lastEntryDate,threshold
+itm001,cat001,Soldering Iron,12,2026-05-10,5
+itm002,cat001,Oscilloscope Probes,7,2026-05-15,4
+itm003,cat001,Multimeter,5,2026-04-20,3
+itm004,cat002,M3 Hex Bolts,340,2026-05-18,100
+itm005,cat002,Torque Wrench Set,3,2026-04-10,5
+itm006,cat002,Precision Screwdriver Set,8,2026-05-05,4
+itm007,cat003,Kapton Tape,22,2026-05-20,10
+itm008,cat003,Isopropyl Alcohol 99%,2,2026-05-22,8
+itm009,cat003,Thermal Paste,15,2026-05-12,5
+itm010,cat004,Digital Caliper,6,2026-03-30,3
+itm011,cat005,Flux Remover Spray,9,2026-05-08,6
+itm012,cat006,Raspberry Pi 4,4,2026-05-25,5
+itm013,cat006,USB-C Hub,11,2026-05-01,4
