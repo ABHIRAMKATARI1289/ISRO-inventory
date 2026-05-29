@@ -249,7 +249,12 @@ export default function HomePage() {
       <Toast />
 
       {/* ═══ SECTION 1: HERO ════════════════════════════════════════════ */}
-      <section id="home-hero" className="snap-section pt-14" style={{ minHeight: '100vh' }}>
+      <section id="home-hero" className="snap-section pt-14" style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
+        {/* Space background */}
+        <div className="absolute inset-0 z-0">
+          <img src="/bg-nebula.png" alt="" className="w-full h-full object-cover" style={{ opacity: 0.55 }} />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(10,14,26,0.45) 0%, rgba(10,14,26,0.3) 50%, rgba(10,14,26,0.75) 100%)' }} />
+        </div>
         <OrbitalBg />
         <div className="relative z-10 flex flex-col items-center justify-center text-center px-4 py-20" style={{ minHeight: '100vh' }}>
           
@@ -305,17 +310,25 @@ export default function HomePage() {
       </section>
 
       {/* ═══ SECTIONS 2–4: MODULES ══════════════════════════════════════ */}
-      {modules.map((mod, i) => (
+      {modules.map((mod, i) => {
+        const bgs = ['/bg-satellite.png', '/bg-earth.png', '/bg-galaxy.png'];
+        return (
         <section
           key={mod.id}
           id={`home-${mod.id}-section`}
-          className={`snap-section blueprint-grid`}
-          style={{ background: i % 2 === 0 ? 'rgba(17,24,39,0.6)' : 'transparent' }}
+          className="snap-section"
+          style={{ position: 'relative', overflow: 'hidden' }}
         >
+          {/* Space background */}
+          <div className="absolute inset-0 z-0">
+            <img src={bgs[i]} alt="" className="w-full h-full object-cover" style={{ opacity: 0.45 }} />
+            <div className="absolute inset-0" style={{ background: 'rgba(10,14,26,0.62)' }} />
+          </div>
+
           {/* Ambient glow */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute inset-0 z-[1] pointer-events-none overflow-hidden">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full"
-              style={{ background: `radial-gradient(circle, ${mod.accent}0.06) 0%, transparent 70%)` }}
+              style={{ background: `radial-gradient(circle, ${mod.accent}0.08) 0%, transparent 70%)` }}
             />
           </div>
 
@@ -328,12 +341,12 @@ export default function HomePage() {
                 <h2 className={`text-4xl md:text-5xl font-bold mb-5 heading ${mod.color}`}>
                   {mod.headline}
                 </h2>
-                <p className="text-white/50 text-lg mb-7 leading-relaxed" style={{ maxWidth: 480 }}>
+                <p className="text-white/60 text-lg mb-7 leading-relaxed" style={{ maxWidth: 480 }}>
                   {mod.description}
                 </p>
                 <ul className="space-y-3 mb-8">
                   {mod.bullets.map(b => (
-                    <li key={b} className="flex items-center gap-3 text-white/70 text-sm">
+                    <li key={b} className="flex items-center gap-3 text-white/80 text-sm">
                       <span className={`w-1.5 h-1.5 rounded-full ${mod.color.replace('text-', 'bg-')}`} />
                       {b}
                     </li>
@@ -352,7 +365,7 @@ export default function HomePage() {
               {/* Visual Card */}
               <div className={`flex-1 scroll-reveal ${i === 1 ? 'from-left' : 'from-right'}`}>
                 <div className="glass-card-dark p-6 max-w-sm mx-auto"
-                  style={{ border: `1px solid ${mod.accent}0.2)` }}>
+                  style={{ border: `1px solid ${mod.accent}0.2)`, backdropFilter: 'blur(20px)' }}>
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-2 h-2 rounded-full bg-red-500" />
                     <div className="w-2 h-2 rounded-full bg-yellow-500" />
@@ -382,20 +395,22 @@ export default function HomePage() {
             </div>
           </div>
         </section>
-      ))}
+        );
+      })}
 
       {/* ═══ SECTION 5: FOOTER ══════════════════════════════════════════ */}
-      <footer id="home-footer" className="py-12 text-center border-t" style={{ borderColor: 'var(--border)', background: 'rgba(17,24,39,0.5)' }}>
-        <div className="flex justify-center mb-4">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L9 7H5l3 3-1.5 5L12 12l5.5 3L16 10l3-3h-4L12 2z" fill="#F59E0B" opacity="0.9"/>
-              <circle cx="12" cy="12" r="2.5" fill="#FBBF24"/>
-            </svg>
-          </div>
+      <footer id="home-footer" className="py-12 text-center border-t" style={{ borderColor: 'var(--border)', position: 'relative', overflow: 'hidden' }}>
+        <div className="absolute inset-0 z-0">
+          <img src="/bg-galaxy.png" alt="" className="w-full h-full object-cover" style={{ opacity: 0.25 }} />
+          <div className="absolute inset-0" style={{ background: 'rgba(10,14,26,0.8)' }} />
         </div>
-        <p className="text-white/40 text-sm mb-1">URSC Bangalore · Department of Space · Government of India</p>
-        <p className="text-white/20 text-xs mono">Store DBMS v1.0 — Internal Use Only</p>
+        <div className="relative z-10">
+          <div className="flex justify-center mb-4">
+            <img src="/isro-logo.svg" alt="ISRO" className="h-12 w-auto object-contain opacity-80" />
+          </div>
+          <p className="text-white/50 text-sm mb-1">URSC Bangalore · Department of Space · Government of India</p>
+          <p className="text-white/25 text-xs mono">Store DBMS v1.0 — Internal Use Only</p>
+        </div>
       </footer>
     </div>
   );
