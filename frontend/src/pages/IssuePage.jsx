@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Navbar from '../components/Navbar';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
 
 function TrashIcon({ size = 14 }) {
   return (
@@ -13,12 +15,13 @@ function TrashIcon({ size = 14 }) {
   );
 }
 
-/* ── Issue Form ──────────────────────────────────────────────────────── */
-function IssueForm({ item, category, onSave, onCancel }) {
+/* ── Issue Form — Level 3 (direct issue, stock deducted immediately) ──── */
+function DirectIssueForm({ item, category, onSave, onCancel }) {
   const today = new Date().toISOString().slice(0, 10);
+  const { user } = useAuth();
   const [date,        setDate]        = useState(today);
   const [requestedBy, setRequestedBy] = useState('');
-  const [approvedBy,  setApprovedBy]  = useState('');
+  const [approvedBy,  setApprovedBy]  = useState(user?.name || '');
   const [qty,         setQty]         = useState('');
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState('');
@@ -53,6 +56,12 @@ function IssueForm({ item, category, onSave, onCancel }) {
 
   return (
     <div id="issue-form-card" className="glass-card-dark p-6 max-w-2xl mx-auto page-enter">
+      {/* Admin badge */}
+      <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-amber-500/8 border border-amber-500/20">
+        <span className="text-amber-400 text-xs">⚡</span>
+        <span className="text-amber-400 text-xs mono">Level 3 — Direct Issue: stock will be deducted immediately</span>
+      </div>
+
       <div className="flex items-center gap-3 mb-6">
         <div className="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
           <span className="text-sky-400 text-sm">📤</span>
@@ -136,7 +145,7 @@ function IssueForm({ item, category, onSave, onCancel }) {
           <button type="submit" id="issue-save-btn" disabled={saving || overIssue}
             className="flex-1 py-3 rounded-xl font-semibold text-sm text-black transition-all disabled:opacity-40 glow-btn"
             style={{ background: overIssue ? '#EF4444' : 'linear-gradient(135deg, #F59E0B, #FBBF24)' }}>
-            {saving ? 'Saving...' : 'Save Issue ✓'}
+            {saving ? 'Saving...' : 'Issue Now ✓'}
           </button>
         </div>
       </form>
@@ -144,9 +153,201 @@ function IssueForm({ item, category, onSave, onCancel }) {
   );
 }
 
+/* ── Issue Request Form — Level 2 (pending approval required) ────────── */
+function IssueRequestForm({ item, category, onSave, onCancel }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const { user } = useAuth();
+  const [date,  setDate]  = useState(today);
+  const [qty,   setQty]   = useState('');
+  const [note,  setNote]  = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState('');
+
+  const openingQty = Number(item.currentStock) || 0;
+  const qtyNum     = Number(qty) || 0;
+  const closingQty = openingQty - qtyNum;
+  const overIssue  = qtyNum > openingQty && qty !== '';
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!qty || qtyNum <= 0) { setError('Quantity must be greater than 0'); return; }
+    if (overIssue) { setError('Requested quantity exceeds available stock.'); return; }
+    setSaving(true);
+    try {
+      await onSave({
+        itemId: item.id,
+        categoryId: category.id,
+        requestedBy: user?.employeeId,
+        requestedByName: user?.name,
+        date,
+        qtyRequested: qtyNum,
+        note: note.trim(),
+      });
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to submit request');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div id="issue-request-form-card" className="glass-card-dark p-6 max-w-2xl mx-auto page-enter">
+      {/* Pending approval badge */}
+      <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-sky-500/8 border border-sky-500/20">
+        <span className="text-sky-400 text-xs">⏳</span>
+        <span className="text-sky-400 text-xs mono">Level 2 — Request mode: stock will only be deducted after Level 3 approval</span>
+      </div>
+
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
+          <span className="text-sky-400 text-sm">📋</span>
+        </div>
+        <div>
+          <h2 className="text-white font-semibold">Submit Issue Request</h2>
+          <p className="text-white/40 text-xs mono">{category.name} · {item.name}</p>
+        </div>
+      </div>
+
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="field-label">Item Name</label>
+            <input className="field-input" value={item.name} readOnly />
+          </div>
+          <div>
+            <label className="field-label">Category</label>
+            <input className="field-input" value={category.name} readOnly />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="field-label">Date of Request</label>
+            <input type="date" className="field-input" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="field-label">Requested By</label>
+            <input className="field-input text-sky-400" value={user?.name || user?.employeeId} readOnly />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="field-label">Opening Quantity</label>
+            <input className="field-input text-amber-400" value={openingQty} readOnly />
+          </div>
+          <div>
+            <label className="field-label">Qty Requested</label>
+            <input
+              id="issue-request-qty"
+              type="number" min="1"
+              className={`field-input font-bold ${overIssue ? 'text-red-400 border-red-500/50' : 'text-sky-400'}`}
+              value={qty}
+              onChange={e => setQty(e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <label className="field-label">Projected Closing</label>
+            <input
+              className={`field-input font-bold ${overIssue ? 'text-red-400' : 'text-white/50'}`}
+              value={qty ? (overIssue ? '⚠ OVER' : closingQty) : '—'}
+              readOnly
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="field-label">Note / Reason (optional)</label>
+          <input type="text" className="field-input" value={note} onChange={e => setNote(e.target.value)} placeholder="Reason for issue request..." />
+        </div>
+
+        {overIssue && (
+          <div className="text-red-400 text-xs mono bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 flex items-center gap-2">
+            <span>⚠</span>
+            <span>Requested qty exceeds available stock! Available: {openingQty} · Requested: {qtyNum}</span>
+          </div>
+        )}
+
+        {error && !overIssue && (
+          <div className="text-red-400 text-xs mono bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">⚠ {error}</div>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button type="button" onClick={onCancel}
+            className="flex-1 py-3 rounded-xl border border-white/10 text-white/50 hover:text-white/80 hover:border-white/20 text-sm font-medium transition-all">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving || overIssue}
+            className="flex-1 py-3 rounded-xl font-semibold text-sm text-black transition-all disabled:opacity-40"
+            style={{ background: overIssue ? '#EF4444' : 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}>
+            {saving ? 'Submitting...' : 'Submit Request →'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* ── My Issue Requests panel (Level 2) ──────────────────────────────── */
+function MyRequestsPanel() {
+  const { user } = useAuth();
+  const [reqs, setReqs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchMyRequests = useCallback(async () => {
+    try {
+      const { data } = await axios.get('/api/issue-requests');
+      setReqs(data.filter(r => r.requestedBy === user?.employeeId).slice(0, 10));
+    } catch {}
+    finally { setLoading(false); }
+  }, [user?.employeeId]);
+
+  useEffect(() => { fetchMyRequests(); }, [fetchMyRequests]);
+
+  if (loading || reqs.length === 0) return null;
+
+  const statusBadge = (s) => {
+    if (s === 'pending')  return <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] mono">PENDING</span>;
+    if (s === 'approved') return <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] mono">APPROVED</span>;
+    return                      <span className="px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 text-[10px] mono">REJECTED</span>;
+  };
+
+  return (
+    <div className="mt-8 page-enter">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-white/10 bg-white/3 hover:bg-white/5 transition-all mb-0"
+      >
+        <span className="text-white/60 text-sm mono tracking-wide">MY RECENT REQUESTS</span>
+        <span className="text-white/30 text-xs mono">{expanded ? '▲ hide' : '▼ show'}</span>
+      </button>
+
+      {expanded && (
+        <div className="border border-t-0 border-white/8 rounded-b-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          {reqs.map((r, i) => (
+            <div key={r.id} className={`flex items-center gap-4 px-4 py-3 ${i < reqs.length - 1 ? 'border-b border-white/5' : ''}`}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-white/80 text-sm truncate">{r.itemName}</span>
+                  <span className="text-white/30 text-xs mono">{r.categoryName}</span>
+                </div>
+                <span className="text-white/30 text-xs mono">{r.date} · Qty: {r.qtyRequested}</span>
+              </div>
+              {statusBadge(r.status)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Main Issue Page ─────────────────────────────────────────────────── */
 export default function IssuePage() {
-  const { categories, items, addIssue, deleteItem, showToast, getCategoryById } = useStore();
+  const { categories, items, addIssue, deleteItem, showToast, getCategoryById, fetchAll } = useStore();
+  const { isAdmin, user } = useAuth();
   const [selectedCat,  setSelectedCat]  = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [catSearch,    setCatSearch]    = useState('');
@@ -166,9 +367,17 @@ export default function IssuePage() {
       .filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()));
   }, [items, selectedCat, itemSearch]);
 
-  const handleSaveIssue = async (payload) => {
+  // Level 3: direct issue
+  const handleDirectIssue = async (payload) => {
     await addIssue(payload);
     showToast(`Issue recorded! Stock updated for "${selectedItem.name}"`, 'success');
+    setSelectedItem(null);
+  };
+
+  // Level 2: submit pending request
+  const handleIssueRequest = async (payload) => {
+    await axios.post('/api/issue-requests', payload);
+    showToast(`Request submitted for "${selectedItem.name}" — awaiting Level 3 approval`, 'success');
     setSelectedItem(null);
   };
 
@@ -196,7 +405,7 @@ export default function IssuePage() {
   };
 
   return (
-    <div id="issue-page" className="min-h-screen pt-16 pb-12 px-4 md:px-8" style={{ background: 'var(--bg-primary)' }}>
+    <div id="issue-page" className="min-h-screen pt-16 pb-12 px-4 md:px-8" style={{ background: 'transparent', position: 'relative', zIndex: 1 }}>
       <Navbar />
       <Toast />
 
@@ -206,17 +415,35 @@ export default function IssuePage() {
           <div className="flex items-center gap-3 mb-1">
             <span className="text-3xl">📤</span>
             <h1 className="text-3xl font-bold text-white heading">Material Issue</h1>
+            {!isAdmin && (
+              <span className="px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/25 text-sky-400 text-xs mono ml-2">
+                Request Mode — Needs Approval
+              </span>
+            )}
           </div>
-          <p className="text-white/40 text-sm mono ml-12">Issue materials to personnel with full approval chain</p>
+          <p className="text-white/40 text-sm mono ml-12">
+            {isAdmin
+              ? 'Issue materials directly — stock deducted immediately'
+              : 'Submit issue requests — a Level 3 admin must approve before stock is deducted'}
+          </p>
         </div>
 
         {selectedItem ? (
-          <IssueForm
-            item={selectedItem}
-            category={getCategoryById(selectedItem.categoryId)}
-            onSave={handleSaveIssue}
-            onCancel={() => setSelectedItem(null)}
-          />
+          isAdmin ? (
+            <DirectIssueForm
+              item={selectedItem}
+              category={getCategoryById(selectedItem.categoryId)}
+              onSave={handleDirectIssue}
+              onCancel={() => setSelectedItem(null)}
+            />
+          ) : (
+            <IssueRequestForm
+              item={selectedItem}
+              category={getCategoryById(selectedItem.categoryId)}
+              onSave={handleIssueRequest}
+              onCancel={() => setSelectedItem(null)}
+            />
+          )
         ) : (
           <>
             {/* Categories */}
@@ -299,16 +526,20 @@ export default function IssuePage() {
                                   disabled={Number(item.currentStock) === 0}
                                   className="px-4 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-400 text-xs hover:bg-sky-500/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                                 >
-                                  {Number(item.currentStock) === 0 ? 'Out of Stock' : 'Issue'}
+                                  {Number(item.currentStock) === 0
+                                    ? 'Out of Stock'
+                                    : isAdmin ? 'Issue' : 'Request'}
                                 </button>
-                                <button
-                                  id={`delete-issue-item-${item.id}`}
-                                  onClick={() => setConfirmItem(item)}
-                                  className="p-1.5 rounded-lg text-red-400/30 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
-                                  title={`Delete "${item.name}"`}
-                                >
-                                  <TrashIcon size={13} />
-                                </button>
+                                {isAdmin && (
+                                  <button
+                                    id={`delete-issue-item-${item.id}`}
+                                    onClick={() => setConfirmItem(item)}
+                                    className="p-1.5 rounded-lg text-red-400/30 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
+                                    title={`Delete "${item.name}"`}
+                                  >
+                                    <TrashIcon size={13} />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -317,13 +548,20 @@ export default function IssuePage() {
                     </table>
                   </div>
                 )}
+
+                {/* Level 2: My Requests panel */}
+                {!isAdmin && <MyRequestsPanel />}
               </div>
             )}
 
             {!selectedCat && (
               <div className="glass-card-dark p-12 text-center mt-4">
                 <div className="text-5xl mb-4">📂</div>
-                <p className="text-white/40">Select a category above to view items for issuance.</p>
+                <p className="text-white/40">
+                  {isAdmin
+                    ? 'Select a category above to issue materials.'
+                    : 'Select a category above to request materials.'}
+                </p>
               </div>
             )}
           </>

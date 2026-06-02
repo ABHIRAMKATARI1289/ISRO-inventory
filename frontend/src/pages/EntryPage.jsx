@@ -3,6 +3,7 @@ import Navbar from '../components/Navbar';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 
 /* ── Trash Icon ──────────────────────────────────────────────────────── */
 function TrashIcon({ size = 14 }) {
@@ -223,6 +224,7 @@ export default function EntryPage() {
     updateItemThreshold, deleteItem,
     showToast, getCategoryById,
   } = useStore();
+  const { canEdit } = useAuth();
 
   const [selectedCat,  setSelectedCat]  = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -284,7 +286,7 @@ export default function EntryPage() {
   const catItemCount = (catId) => items.filter(i => i.categoryId === catId).length;
 
   return (
-    <div className="min-h-screen pt-16 pb-12 px-4 md:px-8" style={{ background: 'var(--bg-primary)' }}>
+    <div className="min-h-screen pt-16 pb-12 px-4 md:px-8" style={{ background: 'transparent', position: 'relative', zIndex: 1 }}>
       <Navbar />
       <Toast />
 
@@ -297,6 +299,17 @@ export default function EntryPage() {
           </div>
           <p className="text-white/40 text-sm mono ml-12">Log incoming materials and update stock records</p>
         </div>
+
+        {/* Read-Only Banner (Level 1) */}
+        {!canEdit && (
+          <div className="mb-6 px-4 py-3 rounded-xl border border-slate-500/30 bg-slate-500/8 flex items-center gap-3 page-enter">
+            <span className="text-slate-400 text-lg">🔒</span>
+            <div>
+              <p className="text-slate-300 text-sm font-medium">Read-Only Access</p>
+              <p className="text-slate-500 text-xs mono">Your account (Level 1 — Viewer) can view inventory but cannot add or modify entries.</p>
+            </div>
+          </div>
+        )}
 
         {selectedItem ? (
           <EntryForm
@@ -314,10 +327,12 @@ export default function EntryPage() {
                 <div className="flex gap-2">
                   <input className="field-input text-xs" style={{ width: 180 }} placeholder="Search categories…"
                     value={catSearch} onChange={e => setCatSearch(e.target.value)} />
-                  <button onClick={() => setShowAddCat(true)}
-                    className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs hover:bg-amber-500/25 transition-all whitespace-nowrap">
-                    + Add Category
-                  </button>
+                  {canEdit && (
+                    <button onClick={() => setShowAddCat(true)}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs hover:bg-amber-500/25 transition-all whitespace-nowrap">
+                      + Add Category
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2">
@@ -346,10 +361,12 @@ export default function EntryPage() {
                   <div className="flex gap-2">
                     <input className="field-input text-xs" style={{ width: 200 }} placeholder="Search items…"
                       value={itemSearch} onChange={e => setItemSearch(e.target.value)} />
-                    <button onClick={() => setShowAddItem(true)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs hover:bg-emerald-500/25 transition-all whitespace-nowrap">
-                      + Add Item
-                    </button>
+                    {canEdit && (
+                      <button onClick={() => setShowAddItem(true)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs hover:bg-emerald-500/25 transition-all whitespace-nowrap">
+                        + Add Item
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -393,27 +410,36 @@ export default function EntryPage() {
                               </td>
                               <td className="px-5 py-4 text-center">
                                 <div className="flex justify-center">
-                                  <ThresholdEditor item={item} onSave={handleThresholdSave} />
+                                  {canEdit
+                                    ? <ThresholdEditor item={item} onSave={handleThresholdSave} />
+                                    : <span className="text-white/30 text-xs mono">min {item.threshold || 5}</span>
+                                  }
                                 </div>
                               </td>
                               <td className="px-5 py-4 text-right text-white/30 text-xs mono">{item.lastEntryDate || '—'}</td>
                               <td className="px-5 py-4">
                                 <div className="flex items-center gap-2 justify-end">
-                                  <button
-                                    id={`entry-btn-${item.id}`}
-                                    onClick={() => setSelectedItem(item)}
-                                    className="px-4 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs hover:bg-amber-500/25 transition-all"
-                                  >
-                                    Add Entry
-                                  </button>
-                                  <button
-                                    id={`delete-item-${item.id}`}
-                                    onClick={() => setConfirmItem(item)}
-                                    className="p-1.5 rounded-lg text-red-400/30 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
-                                    title={`Delete "${item.name}"`}
-                                  >
-                                    <TrashIcon size={13} />
-                                  </button>
+                                  {canEdit ? (
+                                    <>
+                                      <button
+                                        id={`entry-btn-${item.id}`}
+                                        onClick={() => setSelectedItem(item)}
+                                        className="px-4 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs hover:bg-amber-500/25 transition-all"
+                                      >
+                                        Add Entry
+                                      </button>
+                                      <button
+                                        id={`delete-item-${item.id}`}
+                                        onClick={() => setConfirmItem(item)}
+                                        className="p-1.5 rounded-lg text-red-400/30 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
+                                        title={`Delete "${item.name}"`}
+                                      >
+                                        <TrashIcon size={13} />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="text-white/25 text-xs mono">read only</span>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -429,7 +455,9 @@ export default function EntryPage() {
             {!selectedCat && (
               <div className="glass-card-dark p-12 text-center mt-4">
                 <div className="text-5xl mb-4">📂</div>
-                <p className="text-white/40">Select a category above to view and manage items.</p>
+                <p className="text-white/40">
+                  {canEdit ? 'Select a category above to view and manage items.' : 'Select a category above to view items.'}
+                </p>
               </div>
             )}
           </>

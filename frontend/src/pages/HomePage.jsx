@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Toast from '../components/Toast';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
 
 
 /* ── Animated Count-Up ─────────────────────────────────────────────────── */
@@ -48,26 +50,65 @@ function useScrollReveal() {
   }, []);
 }
 
-/* ── Orbital SVG Background ────────────────────────────────────────────── */
+/* ── Section Transition Hook ─────────────────────────────────────────── */
+function useSectionTransitions() {
+  useEffect(() => {
+    const sections = document.querySelectorAll('.section-transition');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) e.target.classList.add('in-view');
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+    sections.forEach(s => observer.observe(s));
+    return () => observer.disconnect();
+  }, []);
+}
+
+/* ── Parallax Hook ──────────────────────────────────────────────────── */
+function useParallax() {
+  useEffect(() => {
+    let raf;
+    const onScroll = () => {
+      raf = requestAnimationFrame(() => {
+        document.querySelectorAll('.parallax-img').forEach(img => {
+          const section = img.closest('section, footer');
+          if (!section) return;
+          const rect = section.getBoundingClientRect();
+          const viewH = window.innerHeight;
+          const progress = (viewH - rect.top) / (viewH + rect.height);
+          const shift = (progress - 0.5) * -30;
+          img.style.transform = `translateY(${shift}px) scale(1.12)`;
+        });
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+}
+
+/* ── Orbital SVG Overlay (rings only, stars come from global SpaceBackground) ── */
 function OrbitalBg() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div className="dot-grid absolute inset-0 opacity-40" />
       <svg
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-10"
-        width="800" height="800" viewBox="0 0 800 800"
-        style={{ animation: 'orbitSpin 40s linear infinite' }}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-8"
+        width="900" height="900" viewBox="0 0 800 800"
+        style={{ animation: 'orbitSpin 60s linear infinite' }}
       >
-        <circle cx="400" cy="400" r="180" stroke="#F59E0B" strokeWidth="0.8" fill="none" strokeDasharray="8 12"/>
-        <circle cx="400" cy="400" r="280" stroke="#F59E0B" strokeWidth="0.5" fill="none" strokeDasharray="4 20"/>
-        <circle cx="400" cy="400" r="360" stroke="#F59E0B" strokeWidth="0.4" fill="none" strokeDasharray="2 30"/>
-        <circle cx="400" cy="220" r="6" fill="#F59E0B" opacity="0.7"/>
-        <circle cx="580" cy="340" r="4" fill="#FBBF24" opacity="0.5"/>
-        <circle cx="290" cy="520" r="5" fill="#F59E0B" opacity="0.6"/>
+        <circle cx="400" cy="400" r="180" stroke="#F59E0B" strokeWidth="0.5" fill="none" strokeDasharray="6 14"/>
+        <circle cx="400" cy="400" r="290" stroke="#F59E0B" strokeWidth="0.3" fill="none" strokeDasharray="3 22"/>
+        <circle cx="400" cy="400" r="370" stroke="#6366f1" strokeWidth="0.3" fill="none" strokeDasharray="2 32"/>
+        <circle cx="400" cy="220" r="5" fill="#F59E0B" opacity="0.5"/>
+        <circle cx="580" cy="340" r="3" fill="#FBBF24" opacity="0.4"/>
+        <circle cx="290" cy="520" r="4" fill="#F59E0B" opacity="0.5"/>
       </svg>
-      {/* Ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.06) 0%, transparent 70%)' }}
+      {/* Accent glow at center */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.04) 0%, transparent 70%)' }}
       />
     </div>
   );
@@ -104,7 +145,6 @@ function LowStockPanel({ navigate }) {
       className="w-full max-w-2xl mb-10"
       style={{ animation: 'fadeUp 0.8s 0.55s cubic-bezier(0.16,1,0.3,1) both' }}
     >
-      {/* Header row */}
       <button
         onClick={() => setExpanded(v => !v)}
         className="w-full flex items-center justify-between px-4 py-3 rounded-t-xl border border-red-500/30 transition-all"
@@ -112,9 +152,7 @@ function LowStockPanel({ navigate }) {
       >
         <div className="flex items-center gap-3">
           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-red-400 font-semibold text-sm mono tracking-wide">
-            LOW STOCK ALERTS
-          </span>
+          <span className="text-red-400 font-semibold text-sm mono tracking-wide">LOW STOCK ALERTS</span>
           <span className="px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-xs mono font-bold">
             {lowStockItems.length}
           </span>
@@ -124,12 +162,9 @@ function LowStockPanel({ navigate }) {
             </span>
           )}
         </div>
-        <span className="text-red-400/60 text-xs mono">
-          {expanded ? '▲ collapse' : '▼ expand'}
-        </span>
+        <span className="text-red-400/60 text-xs mono">{expanded ? '▲ collapse' : '▼ expand'}</span>
       </button>
 
-      {/* Alert rows */}
       {expanded && (
         <div className="border border-t-0 border-red-500/20 rounded-b-xl overflow-hidden"
           style={{ background: 'rgba(239,68,68,0.04)' }}>
@@ -144,16 +179,12 @@ function LowStockPanel({ navigate }) {
                 key={item.id}
                 className={`flex items-center gap-4 px-4 py-3 ${i < lowStockItems.length - 1 ? 'border-b border-red-500/10' : ''}`}
               >
-                {/* Status dot */}
                 <div className={`flex-shrink-0 w-2 h-2 rounded-full ${isOut ? 'bg-red-600 animate-pulse' : 'bg-amber-500'}`} />
-
-                {/* Name + category */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-white/90 text-sm font-medium truncate">{item.name}</span>
                     <span className="text-white/30 text-xs mono flex-shrink-0">{item.categoryName}</span>
                   </div>
-                  {/* Mini progress bar */}
                   <div className="mt-1.5 h-1 rounded-full bg-white/5 w-32 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${isOut ? 'bg-red-600' : 'bg-amber-500'}`}
@@ -161,8 +192,6 @@ function LowStockPanel({ navigate }) {
                     />
                   </div>
                 </div>
-
-                {/* Stock / Threshold */}
                 <div className="text-right flex-shrink-0">
                   <div className={`text-sm font-bold mono ${isOut ? 'text-red-400' : 'text-amber-400'}`}>
                     {isOut ? 'OUT' : stock}
@@ -172,8 +201,6 @@ function LowStockPanel({ navigate }) {
                     {isOut ? 'reorder now' : `−${item.deficit} below min`}
                   </div>
                 </div>
-
-                {/* CTA */}
                 <button
                   onClick={() => navigate('/entry')}
                   className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -193,15 +220,206 @@ function LowStockPanel({ navigate }) {
   );
 }
 
+/* ── Pending Approvals Panel (Level 3 only) ────────────────────────────── */
+function PendingApprovalsPanel() {
+  const { user } = useAuth();
+  const { showToast, fetchAll } = useStore();
+  const [requests, setRequests]   = useState([]);
+  const [loading,  setLoading]    = useState(true);
+  const [acting,   setActing]     = useState(null); // id of request being acted on
+  const [expanded, setExpanded]   = useState(true);
+
+  const fetchRequests = useCallback(async () => {
+    try {
+      const { data } = await axios.get('/api/issue-requests');
+      setRequests(data.filter(r => r.status === 'pending'));
+    } catch (e) {
+      console.error('Failed to fetch issue requests', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchRequests(); }, [fetchRequests]);
+
+  const handleApprove = async (req) => {
+    setActing(req.id);
+    try {
+      await axios.patch(`/api/issue-requests/${req.id}/approve`, {
+        approvedBy: user?.name || user?.employeeId,
+      });
+      showToast(`✓ Approved: "${req.itemName}" ×${req.qtyRequested} issued to ${req.requestedByName}`, 'success');
+      await fetchRequests();
+      await fetchAll();
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Approval failed', 'error');
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleReject = async (req) => {
+    setActing(req.id);
+    try {
+      await axios.patch(`/api/issue-requests/${req.id}/reject`, {
+        approvedBy: user?.name || user?.employeeId,
+        note: 'Rejected by admin',
+      });
+      showToast(`Request for "${req.itemName}" rejected.`, 'error');
+      await fetchRequests();
+    } catch (e) {
+      showToast('Rejection failed', 'error');
+    } finally {
+      setActing(null);
+    }
+  };
+
+  if (loading) return null;
+
+  if (requests.length === 0) {
+    return (
+      <div
+        className="w-full max-w-2xl mb-6 flex items-center gap-3 px-4 py-3 rounded-xl border"
+        style={{
+          background: 'rgba(16,185,129,0.05)',
+          borderColor: 'rgba(16,185,129,0.15)',
+          animation: 'fadeUp 0.8s 0.45s cubic-bezier(0.16,1,0.3,1) both',
+        }}
+      >
+        <span className="text-emerald-400">✓</span>
+        <span className="text-emerald-400/80 text-sm mono">No pending issue requests — queue clear</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="w-full max-w-2xl mb-8"
+      style={{ animation: 'fadeUp 0.8s 0.45s cubic-bezier(0.16,1,0.3,1) both' }}
+    >
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 rounded-t-xl border border-amber-500/40 transition-all"
+        style={{ background: 'rgba(245,158,11,0.1)', borderBottomColor: expanded ? 'transparent' : 'rgba(245,158,11,0.4)' }}
+      >
+        <div className="flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-amber-400 font-semibold text-sm mono tracking-wide">
+            PENDING ISSUE APPROVALS
+          </span>
+          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs mono font-bold">
+            {requests.length}
+          </span>
+        </div>
+        <span className="text-amber-400/60 text-xs mono">{expanded ? '▲ collapse' : '▼ expand'}</span>
+      </button>
+
+      {/* Request rows */}
+      {expanded && (
+        <div className="border border-t-0 border-amber-500/20 rounded-b-xl overflow-hidden"
+          style={{ background: 'rgba(245,158,11,0.03)' }}>
+          {requests.map((req, i) => (
+            <div
+              key={req.id}
+              id={`approval-row-${req.id}`}
+              className={`flex items-center gap-3 px-4 py-3.5 ${i < requests.length - 1 ? 'border-b border-amber-500/10' : ''}`}
+            >
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-white/90 text-sm font-medium truncate">{req.itemName}</span>
+                  <span className="text-white/30 text-xs mono flex-shrink-0">{req.categoryName}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs mono text-white/40">
+                  <span>Requested by: <span className="text-sky-400">{req.requestedByName}</span></span>
+                  <span>·</span>
+                  <span>Qty: <span className="text-amber-400 font-bold">{req.qtyRequested}</span></span>
+                  <span>·</span>
+                  <span>Stock: <span className="text-white/60">{req.currentStock}</span></span>
+                  <span>·</span>
+                  <span>{req.date}</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  id={`approve-btn-${req.id}`}
+                  onClick={() => handleApprove(req)}
+                  disabled={acting === req.id}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/25 transition-all disabled:opacity-40"
+                >
+                  {acting === req.id ? '…' : '✓ Approve'}
+                </button>
+                <button
+                  id={`reject-btn-${req.id}`}
+                  onClick={() => handleReject(req)}
+                  disabled={acting === req.id}
+                  className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all disabled:opacity-40"
+                >
+                  {acting === req.id ? '…' : '✕ Reject'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Access Denied Banner ──────────────────────────────────────────────── */
+function AccessDeniedBanner({ requiredLevel, onDismiss }) {
+  return (
+    <div
+      className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-xl border flex items-center gap-3"
+      style={{
+        background: 'rgba(239,68,68,0.15)',
+        borderColor: 'rgba(239,68,68,0.35)',
+        animation: 'fadeDown 0.4s ease both',
+        backdropFilter: 'blur(12px)',
+      }}
+    >
+      <span className="text-red-400">🔒</span>
+      <span className="text-red-400 text-sm mono">
+        Access Denied — Level {requiredLevel} or higher required
+      </span>
+      <button onClick={onDismiss} className="text-red-400/50 hover:text-red-400 ml-2">✕</button>
+    </div>
+  );
+}
+
+/* ── Main Home Page ─────────────────────────────────────────────────────── */
 export default function HomePage() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const { totalItems, entriesToday, issuesToday, lowStockItems, loading } = useStore();
+  const { user, canEdit, isAdmin, levelColor, levelLabel } = useAuth();
+  const [showDenied, setShowDenied] = useState(false);
+  const [deniedLevel, setDeniedLevel] = useState(2);
+
   useScrollReveal();
+  useSectionTransitions();
+  useParallax();
+
+  useEffect(() => {
+    if (location.state?.accessDenied) {
+      setDeniedLevel(location.state.requiredLevel || 2);
+      setShowDenied(true);
+      // clear the state so back-navigation doesn't re-show it
+      window.history.replaceState({}, '');
+      const t = setTimeout(() => setShowDenied(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [location.state]);
+
+  const colors = levelColor();
 
   const stats = [
-    { label: 'Total Items',     value: loading ? 0 : totalItems,    suffix: '',  color: 'text-amber-400' },
-    { label: 'Entries Today',   value: loading ? 0 : entriesToday,  suffix: '',  color: 'text-emerald-400' },
-    { label: 'Issues Today',    value: loading ? 0 : issuesToday,   suffix: '',  color: 'text-sky-400' },
+    { label: 'Total Items',   value: loading ? 0 : totalItems,   suffix: '', color: 'text-amber-400' },
+    { label: 'Entries Today', value: loading ? 0 : entriesToday, suffix: '', color: 'text-emerald-400' },
+    { label: 'Issues Today',  value: loading ? 0 : issuesToday,  suffix: '', color: 'text-sky-400' },
   ];
 
   const modules = [
@@ -212,10 +430,11 @@ export default function HomePage() {
       headline: 'Material Entry',
       description: 'Log incoming materials with precision. Track every item from receipt to shelf — with automatic stock computation and audit-ready records.',
       bullets: ['Category Management', 'Auto Stock Calculation', 'Full Entry Logs'],
-      cta: 'Go to Entry →',
+      cta: canEdit ? 'Go to Entry →' : 'View Only',
       path: '/entry',
       color: 'text-amber-400',
       accent: 'rgba(245,158,11,',
+      locked: !canEdit,
     },
     {
       id: 'issue',
@@ -224,10 +443,11 @@ export default function HomePage() {
       headline: 'Material Issue',
       description: 'Issue materials to personnel with full approval chain. System-computed closing quantities ensure zero manual errors.',
       bullets: ['Officer Approval Tracking', 'Real-time Stock Deduction', 'Issuance History'],
-      cta: 'Go to Issue →',
+      cta: canEdit ? (isAdmin ? 'Go to Issue →' : 'Request Issue →') : 'View Only',
       path: '/issue',
       color: 'text-sky-400',
       accent: 'rgba(56,189,248,',
+      locked: !canEdit,
     },
     {
       id: 'reports',
@@ -240,28 +460,43 @@ export default function HomePage() {
       path: '/reports',
       color: 'text-violet-400',
       accent: 'rgba(139,92,246,',
+      locked: false,
     },
   ];
 
   return (
-    <div id="home-page" className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
+    <div id="home-page" className="min-h-screen" style={{ background: 'transparent', position: 'relative', zIndex: 1 }}>
       <Navbar />
       <Toast />
 
+      {showDenied && (
+        <AccessDeniedBanner requiredLevel={deniedLevel} onDismiss={() => setShowDenied(false)} />
+      )}
+
       {/* ═══ SECTION 1: HERO ════════════════════════════════════════════ */}
-      <section id="home-hero" className="snap-section pt-14" style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
-        {/* Space background */}
-        <div className="absolute inset-0 z-0">
-          <img src="/bg-nebula.png" alt="" className="w-full h-full object-cover" style={{ opacity: 0.55 }} />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(10,14,26,0.45) 0%, rgba(10,14,26,0.3) 50%, rgba(10,14,26,0.75) 100%)' }} />
-        </div>
+      <section id="home-hero" className="snap-section pt-14 section-transition in-view" style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
+        {/* Subtle radial vignette so content pops against the stars */}
+        <div className="absolute inset-0 z-0 pointer-events-none" style={{
+          background: 'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 0%, rgba(0,0,5,0.45) 100%)'
+        }} />
         <OrbitalBg />
         <div className="relative z-10 flex flex-col items-center justify-center text-center px-4 py-20" style={{ minHeight: '100vh' }}>
-          
-          <div className="mb-4 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 inline-flex items-center gap-2"
-            style={{ animation: 'fadeDown 0.6s ease both' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-amber-400/80 text-xs tracking-widest mono">ISRO · URSC BANGALORE · STORE DBMS v1.0</span>
+
+          {/* Welcome + Level badge */}
+          <div className="mb-4 flex flex-col items-center gap-2" style={{ animation: 'fadeDown 0.6s ease both' }}>
+            <div className="px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 inline-flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-amber-400/80 text-xs tracking-widest mono">ISRO · URSC BANGALORE · STORE DBMS v2.0</span>
+            </div>
+            {user && (
+              <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full border ${colors.bg} ${colors.border}`}>
+                <span className={`text-xs mono font-bold ${colors.text}`}>
+                  Welcome, {user.name}
+                </span>
+                <span className="text-white/20 text-xs">·</span>
+                <span className={`text-xs mono ${colors.text} opacity-70`}>{levelLabel()}</span>
+              </div>
+            )}
           </div>
 
           <h1
@@ -296,6 +531,9 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/* Pending Approvals (Level 3 only) */}
+          {isAdmin && <PendingApprovalsPanel />}
+
           {/* Low Stock Alerts Panel */}
           <LowStockPanel navigate={navigate} />
 
@@ -311,30 +549,27 @@ export default function HomePage() {
 
       {/* ═══ SECTIONS 2–4: MODULES ══════════════════════════════════════ */}
       {modules.map((mod, i) => {
-        const bgs = ['/bg-satellite.png', '/bg-earth.png', '/bg-galaxy.png'];
         return (
         <section
           key={mod.id}
           id={`home-${mod.id}-section`}
-          className="snap-section"
-          style={{ position: 'relative', overflow: 'hidden' }}
+          className="snap-section section-transition"
+          style={{ position: 'relative', overflow: 'hidden', background: 'transparent' }}
         >
-          {/* Space background */}
-          <div className="absolute inset-0 z-0">
-            <img src={bgs[i]} alt="" className="w-full h-full object-cover" style={{ opacity: 0.45 }} />
-            <div className="absolute inset-0" style={{ background: 'rgba(10,14,26,0.62)' }} />
-          </div>
+          {/* Section-specific tinted vignette overlay */}
+          <div className="absolute inset-0 z-0 pointer-events-none" style={{
+            background: `radial-gradient(ellipse 70% 60% at 50% 50%, ${mod.accent}0.06) 0%, rgba(0,0,5,0.55) 100%)`
+          }} />
 
-          {/* Ambient glow */}
           <div className="absolute inset-0 z-[1] pointer-events-none overflow-hidden">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full"
-              style={{ background: `radial-gradient(circle, ${mod.accent}0.08) 0%, transparent 70%)` }}
+              style={{ background: `radial-gradient(circle, ${mod.accent}0.07) 0%, transparent 70%)` }}
             />
           </div>
 
           <div className="relative z-10 w-full max-w-5xl mx-auto px-6 py-20">
             <div className={`flex flex-col ${i === 1 ? 'md:flex-row-reverse' : 'md:flex-row'} items-center gap-12`}>
-              
+
               {/* Text Block */}
               <div className={`flex-1 scroll-reveal ${mod.direction}`}>
                 <div className="text-5xl mb-4">{mod.icon}</div>
@@ -352,14 +587,23 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <button
-                  id={`home-cta-${mod.id}`}
-                  onClick={() => navigate(mod.path)}
-                  className="glow-btn px-8 py-3 rounded-xl font-semibold text-sm text-black"
-                  style={{ background: 'linear-gradient(135deg, #F59E0B, #FBBF24)' }}
-                >
-                  {mod.cta}
-                </button>
+
+                {mod.locked ? (
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-6 py-3 rounded-xl border border-slate-500/30 bg-slate-500/10 text-slate-400 text-sm font-medium">
+                      🔒 Requires Level 2 Access
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    id={`home-cta-${mod.id}`}
+                    onClick={() => navigate(mod.path)}
+                    className="glow-btn px-8 py-3 rounded-xl font-semibold text-sm text-black"
+                    style={{ background: 'linear-gradient(135deg, #F59E0B, #FBBF24)' }}
+                  >
+                    {mod.cta}
+                  </button>
+                )}
               </div>
 
               {/* Visual Card */}
@@ -399,17 +643,16 @@ export default function HomePage() {
       })}
 
       {/* ═══ SECTION 5: FOOTER ══════════════════════════════════════════ */}
-      <footer id="home-footer" className="py-12 text-center border-t" style={{ borderColor: 'var(--border)', position: 'relative', overflow: 'hidden' }}>
-        <div className="absolute inset-0 z-0">
-          <img src="/bg-galaxy.png" alt="" className="w-full h-full object-cover" style={{ opacity: 0.25 }} />
-          <div className="absolute inset-0" style={{ background: 'rgba(10,14,26,0.8)' }} />
-        </div>
+      <footer id="home-footer" className="py-12 text-center border-t section-transition" style={{ borderColor: 'rgba(255,255,255,0.04)', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
+        <div className="absolute inset-0 z-0 pointer-events-none" style={{
+          background: 'linear-gradient(to top, rgba(0,0,5,0.7) 0%, transparent 100%)'
+        }} />
         <div className="relative z-10">
           <div className="flex justify-center mb-4">
             <img src="/isro-logo.svg" alt="ISRO" className="h-12 w-auto object-contain opacity-80" />
           </div>
           <p className="text-white/50 text-sm mb-1">URSC Bangalore · Department of Space · Government of India</p>
-          <p className="text-white/25 text-xs mono">Store DBMS v1.0 — Internal Use Only</p>
+          <p className="text-white/25 text-xs mono">Store DBMS v2.0 — Internal Use Only</p>
         </div>
       </footer>
     </div>

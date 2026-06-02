@@ -1,30 +1,27 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const DEMO_ID  = 'URSC001';
-const DEMO_PWD = 'isro@123';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login, authError, authLoading } = useAuth();
   const [userId,   setUserId]   = useState('');
   const [password, setPassword] = useState('');
-  const [error,    setError]    = useState('');
-  const [loading,  setLoading]  = useState(false);
+  const [localErr, setLocalErr] = useState('');
   const [showPwd,  setShowPwd]  = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      if (userId.trim() === DEMO_ID && password === DEMO_PWD) {
-        navigate('/home');
-      } else {
-        setError('Invalid credentials. Use URSC001 / isro@123');
-        setLoading(false);
-      }
-    }, 800);
+    setLocalErr('');
+    try {
+      await login(userId.trim(), password);
+      navigate('/home');
+    } catch (err) {
+      setLocalErr(err.message);
+    }
   };
+
+  const errorMsg = localErr || authError;
 
   return (
     <div id="login-page" className="relative min-h-screen w-full overflow-hidden flex items-center justify-center">
@@ -118,20 +115,20 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && (
+            {errorMsg && (
               <div id="login-error" className="text-red-400 text-xs mono text-center bg-red-500/10 border border-red-500/20 rounded-lg py-2 px-3">
-                ⚠ {error}
+                ⚠ {errorMsg}
               </div>
             )}
 
             <button
               id="login-submit-btn"
               type="submit"
-              disabled={loading}
+              disabled={authLoading}
               className="w-full py-3 rounded-xl font-semibold text-sm text-black glow-btn transition-all duration-200 disabled:opacity-60 mt-2"
               style={{ background: 'linear-gradient(135deg, #F59E0B, #FBBF24)' }}
             >
-              {loading ? (
+              {authLoading ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -143,10 +140,33 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {/* Level hint */}
+          <div className="mt-5 pt-5 border-t border-white/8">
+            <p className="text-white/20 text-[10px] mono tracking-widest text-center mb-3">DEMO CREDENTIALS</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'URSC-L1', pwd: 'viewer@123',   label: 'Level 1', sublabel: 'Viewer',   color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20' },
+                { id: 'URSC-L2', pwd: 'operator@123', label: 'Level 2', sublabel: 'Operator', color: 'text-sky-400',   bg: 'bg-sky-500/10 border-sky-500/20' },
+                { id: 'URSC-L3', pwd: 'admin@123',    label: 'Level 3', sublabel: 'Admin',    color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
+              ].map(acc => (
+                <button
+                  key={acc.id}
+                  type="button"
+                  onClick={() => { setUserId(acc.id); setPassword(acc.pwd); }}
+                  className={`rounded-lg border p-2 text-center transition-all hover:opacity-90 ${acc.bg}`}
+                >
+                  <div className={`text-xs font-bold mono ${acc.color}`}>{acc.label}</div>
+                  <div className="text-white/30 text-[10px] mono">{acc.sublabel}</div>
+                  <div className="text-white/20 text-[9px] mono mt-0.5">{acc.id}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Footer hint */}
-          <div className="mt-6 pt-5 border-t border-white/8 text-center">
+          <div className="mt-4 text-center">
             <p className="text-white/20 text-[10px] mono tracking-widest">
-              STORE DBMS v1.0 · INTERNAL USE ONLY
+              STORE DBMS v2.0 · INTERNAL USE ONLY
             </p>
           </div>
         </div>

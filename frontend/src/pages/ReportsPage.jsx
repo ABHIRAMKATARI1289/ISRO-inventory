@@ -232,7 +232,7 @@ export default function ReportsPage() {
   ];
 
   return (
-    <div id="reports-page" className="min-h-screen pt-16 pb-16 px-4 md:px-8" style={{ background: 'var(--bg-primary)' }}>
+    <div id="reports-page" className="min-h-screen pt-16 pb-16 px-4 md:px-8" style={{ background: 'transparent', position: 'relative', zIndex: 1 }}>
       <Navbar />
       <Toast />
 

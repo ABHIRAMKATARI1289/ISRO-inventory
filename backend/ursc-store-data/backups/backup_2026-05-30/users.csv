@@ -1,0 +1,5 @@
+id,employeeId,password,name,level,createdAt
+u1,URSC001,isro@123,Admin Officer,3,2026-05-29T11:40:09.704Z
+u2,URSC-L1,viewer@123,Store Viewer,1,2026-05-29T11:40:09.705Z
+u3,URSC-L2,operator@123,Store Operator,2,2026-05-29T11:40:09.705Z
+u4,URSC-L3,admin@123,Store Admin,3,2026-05-29T11:40:09.705Z

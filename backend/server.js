@@ -1,6 +1,7 @@
 /**
  * URSC Store DBMS — Backend Server
  * Node.js + Express + CSV Storage + node-cron Backups
+ * v2.0 — Three-Level RBAC + Issue Approval Workflow
  */
 require('dotenv').config();
 const express = require('express');
@@ -22,18 +23,30 @@ const MAX_BACKUPS = 8;
 
 // ── CSV file paths ──────────────────────────────────────────────────────────
 const FILES = {
-  categories: path.join(DATA_DIR, 'categories.csv'),
-  items:       path.join(DATA_DIR, 'items.csv'),
-  entries:     path.join(DATA_DIR, 'entries.csv'),
-  issues:      path.join(DATA_DIR, 'issues.csv'),
+  categories:     path.join(DATA_DIR, 'categories.csv'),
+  items:          path.join(DATA_DIR, 'items.csv'),
+  entries:        path.join(DATA_DIR, 'entries.csv'),
+  issues:         path.join(DATA_DIR, 'issues.csv'),
+  users:          path.join(DATA_DIR, 'users.csv'),
+  issueRequests:  path.join(DATA_DIR, 'issue_requests.csv'),
 };
 
 const HEADERS = {
-  categories: ['id','name','createdAt'],
-  items:       ['id','categoryId','name','currentStock','lastEntryDate','threshold'],
-  entries:     ['id','itemId','categoryId','indentingOfficer','date','qtyReceived','openingQty','closingQty'],
-  issues:      ['id','itemId','categoryId','requestedBy','approvedBy','date','qtyIssued','openingQty','closingQty'],
+  categories:    ['id','name','createdAt'],
+  items:         ['id','categoryId','name','currentStock','lastEntryDate','threshold'],
+  entries:       ['id','itemId','categoryId','indentingOfficer','date','qtyReceived','openingQty','closingQty'],
+  issues:        ['id','itemId','categoryId','requestedBy','approvedBy','date','qtyIssued','openingQty','closingQty'],
+  users:         ['id','employeeId','password','name','level','createdAt'],
+  issueRequests: ['id','itemId','categoryId','requestedBy','requestedByName','date','qtyRequested','status','approvedBy','approvedAt','note'],
 };
+
+// ── Default users (level 1 = Viewer, 2 = Operator, 3 = Admin) ──────────────
+const DEFAULT_USERS = [
+  { id: 'u1', employeeId: 'URSC001',  password: 'isro@123',     name: 'Admin Officer',    level: '3', createdAt: new Date().toISOString() },
+  { id: 'u2', employeeId: 'URSC-L1',  password: 'viewer@123',   name: 'Store Viewer',     level: '1', createdAt: new Date().toISOString() },
+  { id: 'u3', employeeId: 'URSC-L2',  password: 'operator@123', name: 'Store Operator',   level: '2', createdAt: new Date().toISOString() },
+  { id: 'u4', employeeId: 'URSC-L3',  password: 'admin@123',    name: 'Store Admin',      level: '3', createdAt: new Date().toISOString() },
+];
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors());
@@ -166,10 +179,20 @@ async function migrateItemsThreshold() {
   console.log('[MIGRATE] Done.');
 }
 
+// ── Seed default users if users.csv is empty ────────────────────────────────
+async function seedDefaultUsers() {
+  const users = await readCsv(FILES.users);
+  if (users.length > 0) return;
+  console.log('[SEED] Seeding default users...');
+  await writeCsv(FILES.users, HEADERS.users, DEFAULT_USERS);
+  console.log('[SEED] Default users created.');
+}
+
 // ── Startup ────────────────────────────────────────────────────────────────
 ensureDataDir();
 autoRestoreIfNeeded();
 migrateItemsThreshold().catch(e => console.error('[MIGRATE ERROR]', e.message));
+seedDefaultUsers().catch(e => console.error('[SEED ERROR]', e.message));
 
 // ── Schedule weekly backup: Sunday midnight ──────────────────────────────────
 cron.schedule('0 0 * * 0', async () => {
@@ -190,6 +213,43 @@ cron.schedule('0 0 * * 0', async () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // API ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ── Auth: Login ──────────────────────────────────────────────────────────────
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { employeeId, password } = req.body;
+    if (!employeeId || !password) {
+      return res.status(400).json({ error: 'employeeId and password required' });
+    }
+    const users = await readCsv(FILES.users);
+    const user = users.find(
+      u => u.employeeId.trim() === employeeId.trim() && u.password === password
+    );
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    res.json({
+      user: {
+        id: user.id,
+        employeeId: user.employeeId,
+        name: user.name,
+        level: Number(user.level),
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Auth: List Users (for admin purposes) ────────────────────────────────────
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await readCsv(FILES.users);
+    res.json(users.map(u => ({ id: u.id, employeeId: u.employeeId, name: u.name, level: u.level })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ── Categories ───────────────────────────────────────────────────────────────
 app.get('/api/categories', async (req, res) => {
@@ -263,18 +323,20 @@ app.patch('/api/items/:id', async (req, res) => {
 app.delete('/api/items/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [items, entries, issues] = await Promise.all([
+    const [items, entries, issues, issueReqs] = await Promise.all([
       readCsv(FILES.items),
       readCsv(FILES.entries),
       readCsv(FILES.issues),
+      readCsv(FILES.issueRequests),
     ]);
     const exists = items.find(i => i.id === id);
     if (!exists) return res.status(404).json({ error: 'Item not found' });
 
     await Promise.all([
-      writeCsv(FILES.items,   HEADERS.items,   items.filter(i => i.id !== id)),
-      writeCsv(FILES.entries, HEADERS.entries, entries.filter(e => e.itemId !== id)),
-      writeCsv(FILES.issues,  HEADERS.issues,  issues.filter(i => i.itemId !== id)),
+      writeCsv(FILES.items,         HEADERS.items,         items.filter(i => i.id !== id)),
+      writeCsv(FILES.entries,       HEADERS.entries,       entries.filter(e => e.itemId !== id)),
+      writeCsv(FILES.issues,        HEADERS.issues,        issues.filter(i => i.itemId !== id)),
+      writeCsv(FILES.issueRequests, HEADERS.issueRequests, issueReqs.filter(r => r.itemId !== id)),
     ]);
     res.json({ success: true, deleted: id });
   } catch (e) {
@@ -286,21 +348,23 @@ app.delete('/api/items/:id', async (req, res) => {
 app.delete('/api/categories/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [categories, items, entries, issues] = await Promise.all([
+    const [categories, items, entries, issues, issueReqs] = await Promise.all([
       readCsv(FILES.categories),
       readCsv(FILES.items),
       readCsv(FILES.entries),
       readCsv(FILES.issues),
+      readCsv(FILES.issueRequests),
     ]);
     const exists = categories.find(c => c.id === id);
     if (!exists) return res.status(404).json({ error: 'Category not found' });
 
     const itemIds = new Set(items.filter(i => i.categoryId === id).map(i => i.id));
     await Promise.all([
-      writeCsv(FILES.categories, HEADERS.categories, categories.filter(c => c.id !== id)),
-      writeCsv(FILES.items,      HEADERS.items,      items.filter(i => i.categoryId !== id)),
-      writeCsv(FILES.entries,    HEADERS.entries,    entries.filter(e => !itemIds.has(e.itemId))),
-      writeCsv(FILES.issues,     HEADERS.issues,     issues.filter(i => !itemIds.has(i.itemId))),
+      writeCsv(FILES.categories,    HEADERS.categories,    categories.filter(c => c.id !== id)),
+      writeCsv(FILES.items,         HEADERS.items,         items.filter(i => i.categoryId !== id)),
+      writeCsv(FILES.entries,       HEADERS.entries,       entries.filter(e => !itemIds.has(e.itemId))),
+      writeCsv(FILES.issues,        HEADERS.issues,        issues.filter(i => !itemIds.has(i.itemId))),
+      writeCsv(FILES.issueRequests, HEADERS.issueRequests, issueReqs.filter(r => !itemIds.has(r.itemId))),
     ]);
     res.json({ success: true, deleted: id, itemsRemoved: itemIds.size });
   } catch (e) {
@@ -373,7 +437,7 @@ app.post('/api/entries', async (req, res) => {
   }
 });
 
-// ── Issues ─────────────────────────────────────────────────────────────────────
+// ── Issues (direct — Level 3 only) ─────────────────────────────────────────────
 app.get('/api/issues', async (req, res) => {
   try {
     const rows = await readCsv(FILES.issues);
@@ -414,6 +478,147 @@ app.post('/api/issues', async (req, res) => {
     };
     await appendRow('issues', row);
     res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Issue Requests (Level 2 pending approval workflow) ──────────────────────
+app.get('/api/issue-requests', async (req, res) => {
+  try {
+    const [requests, items, categories] = await Promise.all([
+      readCsv(FILES.issueRequests),
+      readCsv(FILES.items),
+      readCsv(FILES.categories),
+    ]);
+    const itemMap = Object.fromEntries(items.map(i => [i.id, i]));
+    const catMap  = Object.fromEntries(categories.map(c => [c.id, c.name]));
+
+    const enriched = requests.map(r => ({
+      ...r,
+      itemName:     itemMap[r.itemId]?.name || '—',
+      categoryName: catMap[r.categoryId] || '—',
+      currentStock: itemMap[r.itemId]?.currentStock || '0',
+    }));
+    res.json(enriched);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/issue-requests', async (req, res) => {
+  try {
+    const { itemId, categoryId, requestedBy, requestedByName, date, qtyRequested, note } = req.body;
+    if (!itemId || !qtyRequested || !requestedBy) {
+      return res.status(400).json({ error: 'itemId, qtyRequested, and requestedBy required' });
+    }
+
+    // Validate item exists
+    const items = await readCsv(FILES.items);
+    const item = items.find(i => i.id === itemId);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+
+    // Validate stock availability
+    if (Number(qtyRequested) > Number(item.currentStock)) {
+      return res.status(400).json({ error: 'Requested quantity exceeds available stock' });
+    }
+
+    const row = {
+      id: genId(),
+      itemId,
+      categoryId,
+      requestedBy,
+      requestedByName: requestedByName || requestedBy,
+      date: date || new Date().toISOString().slice(0, 10),
+      qtyRequested: String(qtyRequested),
+      status: 'pending',
+      approvedBy: '',
+      approvedAt: '',
+      note: note || '',
+    };
+    await appendRow('issueRequests', row);
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Approve Issue Request ────────────────────────────────────────────────────
+app.patch('/api/issue-requests/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approvedBy } = req.body;
+    if (!approvedBy) return res.status(400).json({ error: 'approvedBy required' });
+
+    const requests = await readCsv(FILES.issueRequests);
+    const reqIdx = requests.findIndex(r => r.id === id);
+    if (reqIdx === -1) return res.status(404).json({ error: 'Request not found' });
+    if (requests[reqIdx].status !== 'pending') {
+      return res.status(400).json({ error: 'Request is no longer pending' });
+    }
+
+    const request = requests[reqIdx];
+    const items = await readCsv(FILES.items);
+    const itemIdx = items.findIndex(i => i.id === request.itemId);
+    if (itemIdx === -1) return res.status(404).json({ error: 'Item not found' });
+
+    const openingQty = Number(items[itemIdx].currentStock) || 0;
+    const qtyIssued  = Number(request.qtyRequested);
+    if (qtyIssued > openingQty) {
+      return res.status(400).json({ error: `Insufficient stock. Available: ${openingQty}, Requested: ${qtyIssued}` });
+    }
+    const closingQty = openingQty - qtyIssued;
+
+    // Deduct stock
+    items[itemIdx].currentStock = String(closingQty);
+    await writeCsv(FILES.items, HEADERS.items, items);
+
+    // Create actual issue record
+    const issueRow = {
+      id: genId(),
+      itemId:      request.itemId,
+      categoryId:  request.categoryId,
+      requestedBy: request.requestedByName || request.requestedBy,
+      approvedBy,
+      date:        request.date,
+      qtyIssued:   String(qtyIssued),
+      openingQty:  String(openingQty),
+      closingQty:  String(closingQty),
+    };
+    await appendRow('issues', issueRow);
+
+    // Update request status
+    requests[reqIdx].status     = 'approved';
+    requests[reqIdx].approvedBy = approvedBy;
+    requests[reqIdx].approvedAt = new Date().toISOString();
+    await writeCsv(FILES.issueRequests, HEADERS.issueRequests, requests);
+
+    res.json({ success: true, issue: issueRow, request: requests[reqIdx] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Reject Issue Request ─────────────────────────────────────────────────────
+app.patch('/api/issue-requests/:id/reject', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approvedBy, note } = req.body;
+
+    const requests = await readCsv(FILES.issueRequests);
+    const reqIdx = requests.findIndex(r => r.id === id);
+    if (reqIdx === -1) return res.status(404).json({ error: 'Request not found' });
+    if (requests[reqIdx].status !== 'pending') {
+      return res.status(400).json({ error: 'Request is no longer pending' });
+    }
+
+    requests[reqIdx].status     = 'rejected';
+    requests[reqIdx].approvedBy = approvedBy || '';
+    requests[reqIdx].approvedAt = new Date().toISOString();
+    requests[reqIdx].note       = note || '';
+    await writeCsv(FILES.issueRequests, HEADERS.issueRequests, requests);
+
+    res.json({ success: true, request: requests[reqIdx] });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -509,8 +714,8 @@ Score: 74/100 — ADEQUATE
 ${lowStock.length > 0 ? `Action Required: ${lowStock.length} item(s) critically low.` : 'Inventory is in a healthy state.'}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NOTE: This is a demo insight. Set GROK_API_KEY in backend/.env for 
-live AI-powered analysis via Grok.
+NOTE: This is a demo insight. Set ANTHROPIC_API_KEY in backend/.env for 
+live AI-powered analysis.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 }
 
